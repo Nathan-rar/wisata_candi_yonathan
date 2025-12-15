@@ -18,9 +18,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Wisata Candi',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
-      ),
+      theme: ThemeData(primarySwatch: Colors.deepPurple),
       home: const MainScreen(),
       routes: {
         '/signin': (context) => const SignInScreen(),
@@ -46,31 +44,41 @@ class _MainScreenState extends State<MainScreen> {
     switch (_currentIndex) {
       case 0:
         // Home Screen
-        return const HomeScreen();
+        return const HomeScreen(key: ValueKey('home'));
       case 1:
         // Search Screen
-        return const SearchScreen();
+        return const SearchScreen(key: ValueKey('search'));
       case 2:
         // Profile Screen
-        return const FavoriteScreen();
-        // Favorite Screen
+        return const FavoriteScreen(key: ValueKey('favorite'));
+      // Favorite Screen
       case 3:
-        return const ProfileScreen();
+        return const ProfileScreen(key: ValueKey('profile'));
       default:
         // Default ke Home Screen
-        return const HomeScreen();
+        return const HomeScreen(key: ValueKey('home-default'));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _renderScreen(),
-
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 350),
+        transitionBuilder: (child, animation) {
+          final offsetAnimation = Tween<Offset>(
+            begin: const Offset(0.05, 0.02),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(position: offsetAnimation, child: child),
+          );
+        },
+        child: _renderScreen(),
+      ),
       bottomNavigationBar: Theme(
-        data: Theme.of(context).copyWith(
-          canvasColor: Colors.deepPurple[50],
-        ),
+        data: Theme.of(context).copyWith(canvasColor: Colors.deepPurple[50]),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
@@ -83,26 +91,16 @@ class _MainScreenState extends State<MainScreen> {
           unselectedItemColor: Colors.deepPurple[200],
           showUnselectedLabels: true,
           items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: "Home",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.search),
-              label: "Search",
-            ),
+            BottomNavigationBarItem(icon: Icon(Icons.home), label: "Home"),
+            BottomNavigationBarItem(icon: Icon(Icons.search), label: "Search"),
             BottomNavigationBarItem(
               icon: Icon(Icons.favorite),
               label: "Favorit",
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person),
-              label: "Profile",
-            ),
+            BottomNavigationBarItem(icon: Icon(Icons.person), label: "Profile"),
           ],
         ),
       ),
     );
   }
 }
-

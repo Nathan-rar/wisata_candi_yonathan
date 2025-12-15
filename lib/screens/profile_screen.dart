@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
+import 'package:encrypt/encrypt.dart' as encrypt;
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -14,11 +15,11 @@ class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   // 1. Declare necessary variables
   bool isSignedIn = false;
-  String fullName = ''; // Example name
-  String userName = ''; // Example username
+  String fullName = ''; 
+  String userName = '';
   int favoriteCandiCount = 0;
   String? profileImageBase64;
-  
+
   late AnimationController _fadeAnimationController;
   late Animation<double> _fadeAnimation;
 
@@ -33,7 +34,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     await prefs.setBool('isSignedIn', false);
 
     setState(() {
-      isSignedIn = !isSignedIn;
+      isSignedIn = false;
       userName = '';
       fullName = '';
       favoriteCandiCount = 0;
@@ -41,9 +42,9 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     // Tampilkan snackbar konfirmasi
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Anda berhasil sign out')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Anda berhasil sign out')));
     }
   }
 
@@ -56,10 +57,40 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   void _identitas() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    setState(() {
-      fullName = prefs.getString("fullname") ?? "";
-      userName = prefs.getString("username") ?? "";
-    });
+    final encryptedFullName = prefs.getString("fullname");
+    final encryptedUserName = prefs.getString("username");
+    final keyString = prefs.getString('key');
+    final ivString = prefs.getString('iv');
+
+    if (encryptedFullName != null &&
+        encryptedUserName != null &&
+        keyString != null &&
+        ivString != null &&
+        encryptedFullName.isNotEmpty &&
+        encryptedUserName.isNotEmpty &&
+        keyString.isNotEmpty &&
+        ivString.isNotEmpty) {
+      try {
+        final key = encrypt.Key.fromBase64(keyString);
+        final iv = encrypt.IV.fromBase64(ivString);
+        final encrypter = encrypt.Encrypter(encrypt.AES(key));
+
+        setState(() {
+          fullName = encrypter.decrypt64(encryptedFullName, iv: iv);
+          userName = encrypter.decrypt64(encryptedUserName, iv: iv);
+        });
+      } catch (_) {
+        setState(() {
+          fullName = "";
+          userName = "";
+        });
+      }
+    } else {
+      setState(() {
+        fullName = "";
+        userName = "";
+      });
+    }
   }
 
   // Fungsi untuk mendapatkan jumlah favorit
@@ -70,12 +101,11 @@ class _ProfileScreenState extends State<ProfileScreen>
       favoriteCandiCount = favoriteNames.length;
     });
   }
-
-  // Fungsi untuk memilih gambar dari gallery
   Future<void> _pickImage() async {
     try {
-      final XFile? pickedFile =
-          await ImagePicker().pickImage(source: ImageSource.gallery);
+      final XFile? pickedFile = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+      );
 
       if (pickedFile != null) {
         // Baca file sebagai bytes
@@ -99,9 +129,9 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -116,24 +146,23 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   void initState() {
-    _checkSignInStatus();
-    
     _fadeAnimationController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
-    
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _fadeAnimationController, curve: Curves.easeIn),
     );
-    
+
     _fadeAnimationController.forward();
-    
-    if (isSignedIn) {
-      _identitas();
-      _getFavoriteCount();
-      _loadProfileImage();
-    }
+
+    // Load sign in status dan data
+    _checkSignInStatus();
+    _loadProfileImage();
+    _identitas();
+    _getFavoriteCount();
+
     super.initState();
   }
 
@@ -165,7 +194,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                       child: Padding(
                         padding: const EdgeInsets.only(top: 150),
                         child: Stack(
-                          alignment: Alignment.bottomRight,
+                          clipBehavior: Clip.none,
                           children: [
                             Container(
                               decoration: BoxDecoration(
@@ -179,7 +208,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                                 radius: 50,
                                 backgroundColor: Colors.deepPurple[100],
                                 backgroundImage: profileImageBase64 != null
-                                    ? MemoryImage(base64Decode(profileImageBase64!))
+                                    ? MemoryImage(
+                                        base64Decode(profileImageBase64!),
+                                      )
                                     : null,
                                 child: profileImageBase64 == null
                                     ? Icon(
@@ -190,11 +221,15 @@ class _ProfileScreenState extends State<ProfileScreen>
                                     : null,
                               ),
                             ),
-                            if (isSignedIn)
-                              Positioned(
-                                bottom: -8,
-                                right: -8,
+                            // Camera button - positioned at bottom right corner
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: GestureDetector(
+                                onTap: _pickImage,
                                 child: Container(
+                                  width: 40,
+                                  height: 40,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     color: Colors.deepPurple,
@@ -204,29 +239,24 @@ class _ProfileScreenState extends State<ProfileScreen>
                                     ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.3),
+                                        color: Colors.black.withValues(
+                                          alpha: 0.3,
+                                        ),
                                         blurRadius: 8,
                                         offset: const Offset(0, 2),
                                       ),
                                     ],
                                   ),
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      onTap: _pickImage,
-                                      customBorder: const CircleBorder(),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(12),
-                                        child: Icon(
-                                          Icons.camera_alt,
-                                          color: Colors.white,
-                                          size: 20,
-                                        ),
-                                      ),
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.camera_alt,
+                                      color: Colors.white,
+                                      size: 18,
                                     ),
                                   ),
                                 ),
                               ),
+                            ),
                           ],
                         ),
                       ),
@@ -319,8 +349,14 @@ class _ProfileScreenState extends State<ProfileScreen>
                       ],
                     ),
                     isSignedIn
-                        ? TextButton(onPressed: signOut, child: const Text('Sign Out'))
-                        : TextButton(onPressed: signIn, child: const Text('Sign In')),
+                        ? TextButton(
+                            onPressed: signOut,
+                            child: const Text('Sign Out'),
+                          )
+                        : TextButton(
+                            onPressed: signIn,
+                            child: const Text('Sign In'),
+                          ),
                   ],
                 ),
               ),
